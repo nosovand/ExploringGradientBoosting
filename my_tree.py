@@ -4,7 +4,7 @@ from sklearn.base import BaseEstimator, ClassifierMixin
 from typing import Any
 
 class CustomDecisionTreeClassifier(BaseEstimator, ClassifierMixin):
-    def __init__(self, max_depth=1, min_samples_split=2, min_samples_leaf=1):
+    def __init__(self, max_depth=1, min_samples_split=2, min_samples_leaf=1, max_features=None):
         ''''
         Constructor for the DecisionTreeClassifier class.
 
@@ -27,6 +27,10 @@ class CustomDecisionTreeClassifier(BaseEstimator, ClassifierMixin):
             raise ValueError("min_samples_leaf must be an integer.")
         else:
             self.min_samples_leaf = min_samples_leaf
+        if max_features is not None and not isinstance(max_features, int):
+            raise ValueError("max_features must be an integer.")
+        else:
+            self.max_features = max_features
     
     def __call__(self, *args, **kwargs):
         '''
@@ -48,8 +52,9 @@ class CustomDecisionTreeClassifier(BaseEstimator, ClassifierMixin):
         # self.num_samples = len(y)
         self.unique_classes = np.unique(y)
         X = self._check_feature_format(X)
-
         y = np.array(y)
+        if self.max_features is None:
+            self.max_features = X.shape[1]
         self.tree = self._build_tree(X, y, depth=0)
 
     def _build_tree(self, X, y, depth):
@@ -165,6 +170,12 @@ class CustomDecisionTreeClassifier(BaseEstimator, ClassifierMixin):
         self.current_node_num_of_samples_in_classes = {}
         for i in range(self.current_node_num_classes):
             self.current_node_num_of_samples_in_classes[self.current_node_unique_classes[i]] = np.sum(y == self.current_node_unique_classes[i])
+
+        # Keep only max_features number of features
+        if self.max_features < X.shape[1]:
+            random_indices = np.random.choice(X.shape[1], self.max_features, replace=False)
+            X = X[:, random_indices]
+            print(X)
 
         # Iterate over all features and values to find the best split
         for feature in range(X.shape[1]):
