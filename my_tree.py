@@ -44,6 +44,9 @@ class CustomDecisionTreeClassifier(BaseEstimator, ClassifierMixin):
         y: array-like of shape (n_samples,)
             The target values.
         '''
+        # self.num_classes = len(np.unique(y))
+        # self.num_samples = len(y)
+        self.unique_classes = np.unique(y)
         X = self._check_feature_format(X)
 
         y = np.array(y)
@@ -155,20 +158,51 @@ class CustomDecisionTreeClassifier(BaseEstimator, ClassifierMixin):
         best_gini = 1
         best_feature = None
         best_value = None
+        self.current_node_num_samples = len(y)
+        self.current_node_unique_classes = np.unique(y)
+        self.current_node_num_classes = len(self.current_node_unique_classes)
+        # Count the number of samples in each class in a dictionary with class as key and number of samples as value
+        self.current_node_num_of_samples_in_classes = {}
+        for i in range(self.current_node_num_classes):
+            self.current_node_num_of_samples_in_classes[self.current_node_unique_classes[i]] = np.sum(y == self.current_node_unique_classes[i])
 
         # Iterate over all features and values to find the best split
         for feature in range(X.shape[1]):
-            for value in np.array(list(set(X[1:, feature]))):
+            # Initialize left indices as an array of False values of length set(X[1:, feature])).len
+            left_indices = np.zeros(len(X[1:, feature]), dtype=bool)
+            right_indices = np.ones(len(X[1:, feature]), dtype=bool)
+            X_sorted_idx = X[1:, feature].argsort()
+            X_sorted = X[1:, feature][X_sorted_idx]
+            y_sorted = y[X_sorted_idx]
+            self.current_split_num_samples_in_classes = {}
+            self.current_split_num_samples_in_classes['left'] = {}
+            self.current_split_num_samples_in_classes['right']  = {}
+            for i in range(self.current_node_num_classes):
+                self.current_split_num_samples_in_classes['left'][self.current_node_unique_classes[i]] = 0
+                self.current_split_num_samples_in_classes['right'][self.current_node_unique_classes[i]] = self.current_node_num_of_samples_in_classes[self.current_node_unique_classes[i]]
+            # for idx, value in enumerate(np.array(list(set(X[1:, feature]))).argsort()):
+            # for value in np.array(list(set(X[1:, feature]))):
+            value_stored = None
+            for idx, value in enumerate(X_sorted):
                 # Split the data
-                left_indices = X[1:, feature] < value
-                right_indices = X[1:, feature] >= value
+                # left_indices = X[1:, feature] < value
+                # right_indices = X[1:, feature] >= value
+                left_indices[idx] = True
+                right_indices[idx] = False
+                # Update the number of samples in each class
+                self.current_split_num_samples_in_classes['left'][y_sorted[idx]] += 1
+                self.current_split_num_samples_in_classes['right'][y_sorted[idx]] -= 1
+                # Check if the value is the same as the previous value
+                if value_stored == value:
+                    continue
+                value_stored = value
                 # Check if number of samples in each split is bigger than min_samples_leaf
-                if len(left_indices) < self.min_samples_leaf or len(right_indices) < self.min_samples_leaf:
+                if idx+1 < self.min_samples_leaf or self.current_node_num_samples-idx-1 < self.min_samples_leaf:
                     # Skip splits with less than min_samples_leaf samples
                     # print("Skipping split with less than min_samples_leaf samples")
                     continue
                 # Calculate the Gini impurity
-                gini = self._calculate_gini(y[left_indices], y[right_indices])
+                gini = self._calculate_gini(y_sorted[left_indices], y_sorted[right_indices], idx)
                 # print("test gini")
                 # print(gini)
                 # Update the best split if the current split is better
@@ -178,7 +212,7 @@ class CustomDecisionTreeClassifier(BaseEstimator, ClassifierMixin):
                     best_value = value
         return best_feature, best_value, best_gini
     
-    def _calculate_gini(self, left_y, right_y):
+    def _calculate_gini(self, left_y, right_y, idx):
         '''
         Calculate the Gini impurity for the given split.
 
@@ -188,30 +222,32 @@ class CustomDecisionTreeClassifier(BaseEstimator, ClassifierMixin):
         right_y: array-like
             The target values for the right node.
         '''
+        left_size = idx + 1
+        right_size = self.current_node_num_samples - idx - 1
         #If left or right node is empty, return 1
-        if len(left_y) == 0 or len(right_y) == 0:
+        if left_size == 0 or right_size == 0:
             return 1
         #extract number of classes from left and right nodes
-        classes = np.unique(np.concatenate((left_y, right_y), axis = None))
-        #2D array of size len(classes) x 2 to store gini impurity for each class and each node
-        gini = np.zeros((len(classes), 2))
-        for i in range(len(classes)):
+        #classes = np.unique(np.concatenate((left_y, right_y), axis = None))
+        #2D array of size len(classes) x 2 to store ratio of class i in left and right nodes
+        gini = np.zeros((self.current_node_num_classes, 2))
+        for i, label in enumerate(self.current_node_unique_classes):
             #calculate ratio of class i in left node
-            gini[i, 0] = np.sum(left_y == classes[i]) / len(left_y)
+            gini[i, 0] = self.current_split_num_samples_in_classes['left'][label] / left_size
             #calculate ratio of class i in right node
-            gini[i, 1] = np.sum(right_y == classes[i]) / len(right_y)
+            gini[i, 1] = self.current_split_num_samples_in_classes['right'][label] / right_size
 
         #Calculate gini impurity for left and right nodes
         left_gini = 1 - np.sum(gini[:, 0] ** 2)
         right_gini = 1 - np.sum(gini[:, 1] ** 2)
 
-        left_size = len(left_y)
-        right_size = len(right_y)
+        # left_size = len(left_y)
+        # right_size = len(right_y)
         #Calculated total size of left and right nodes
-        total_size = left_size + right_size
+        # total_size = left_size + right_size
 
         #Calculate weighted gini impurity
-        gini = (left_size / total_size) * left_gini + (right_size / total_size) * right_gini
+        gini = (left_size / self.current_node_num_samples) * left_gini + (right_size / self.current_node_num_samples) * right_gini
         return gini
     
     def predict(self, X):
