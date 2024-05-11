@@ -27,8 +27,8 @@ class CustomDecisionTreeClassifier(BaseEstimator, ClassifierMixin):
             raise ValueError("min_samples_leaf must be an integer.")
         else:
             self.min_samples_leaf = min_samples_leaf
-        if max_features is not None and not isinstance(max_features, int):
-            raise ValueError("max_features must be an integer.")
+        if max_features is not None and not isinstance(max_features, int) and not isinstance(max_features, str):
+            raise ValueError("max_features must be an integer or string.")
         else:
             self.max_features = max_features
     
@@ -55,6 +55,13 @@ class CustomDecisionTreeClassifier(BaseEstimator, ClassifierMixin):
         y = np.array(y)
         if self.max_features is None:
             self.max_features = X.shape[1]
+        elif isinstance(self.max_features, str):
+            if self.max_features == "sqrt":
+                self.max_features = int(np.sqrt(X.shape[1]))
+            elif self.max_features == "log2":
+                self.max_features = int(np.log2(X.shape[1]))
+            else:
+                raise ValueError("max_features must be an integer, 'sqrt' or 'log2'.")
         self.tree = self._build_tree(X, y, depth=0)
 
     def _build_tree(self, X, y, depth):
