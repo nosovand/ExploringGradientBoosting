@@ -180,11 +180,6 @@ class CustomDecisionTreeClassifier(BaseEstimator, ClassifierMixin):
         # for i in range(self.current_node_num_classes):
         #     self.current_node_num_of_samples_in_classes[self.current_node_unique_classes[i]] = np.sum(y == self.current_node_unique_classes[i])
 
-        # Keep only max_features number of features
-        if self.max_features < X.shape[1]:
-            random_indices = np.random.choice(X.shape[1], self.max_features, replace=False)
-            X = X[:, random_indices]
-
         current_node_num_samples_in_classes = {}
         current_node_num_samples_in_classes['left'] = {}
         current_node_num_samples_in_classes['right']  = {}
