@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 from sklearn.base import BaseEstimator, ClassifierMixin
 from typing import Any
+import copy
 
 class CustomDecisionTreeClassifier(BaseEstimator, ClassifierMixin):
     def __init__(self, max_depth=1, min_samples_split=2, min_samples_leaf=1, max_features=None):
@@ -93,8 +94,8 @@ class CustomDecisionTreeClassifier(BaseEstimator, ClassifierMixin):
         best_feature_name = X[0, best_feature]
 
         # Split the data based on the best split
-        left_indices = X[1:, best_feature] < best_value
-        right_indices = X[1:, best_feature] >= best_value
+        left_indices = X[1:, best_feature] <= best_value
+        right_indices = X[1:, best_feature] > best_value
 
         #Add row 0 to left and right indices to keep track of the feature names
         left_indices = np.insert(left_indices, 0, True)
@@ -131,6 +132,7 @@ class CustomDecisionTreeClassifier(BaseEstimator, ClassifierMixin):
         depth: int
             The current depth of the tree.
         '''
+        # print("test stop condition")
         return depth == self.max_depth or len(y) < self.min_samples_split or len(np.unique(y)) == 1
     
     def _empty_tree(self, y):
@@ -174,9 +176,21 @@ class CustomDecisionTreeClassifier(BaseEstimator, ClassifierMixin):
         self.current_node_unique_classes = np.unique(y)
         self.current_node_num_classes = len(self.current_node_unique_classes)
         # Count the number of samples in each class in a dictionary with class as key and number of samples as value
-        self.current_node_num_of_samples_in_classes = {}
+        # self.current_node_num_of_samples_in_classes = {}
+        # for i in range(self.current_node_num_classes):
+        #     self.current_node_num_of_samples_in_classes[self.current_node_unique_classes[i]] = np.sum(y == self.current_node_unique_classes[i])
+
+        # Keep only max_features number of features
+        if self.max_features < X.shape[1]:
+            random_indices = np.random.choice(X.shape[1], self.max_features, replace=False)
+            X = X[:, random_indices]
+
+        current_node_num_samples_in_classes = {}
+        current_node_num_samples_in_classes['left'] = {}
+        current_node_num_samples_in_classes['right']  = {}
         for i in range(self.current_node_num_classes):
-            self.current_node_num_of_samples_in_classes[self.current_node_unique_classes[i]] = np.sum(y == self.current_node_unique_classes[i])
+            current_node_num_samples_in_classes['left'][self.current_node_unique_classes[i]] = 0.0
+            current_node_num_samples_in_classes['right'][self.current_node_unique_classes[i]] = np.sum(y == self.current_node_unique_classes[i])
 
         # Keep only max_features number of features
         if self.max_features < X.shape[1]:
@@ -196,11 +210,13 @@ class CustomDecisionTreeClassifier(BaseEstimator, ClassifierMixin):
             y_sorted = y[X_sorted_idx]
             # Initialize the number of samples in each class in the left and right nodes
             self.current_split_num_samples_in_classes = {}
-            self.current_split_num_samples_in_classes['left'] = {}
-            self.current_split_num_samples_in_classes['right']  = {}
-            for i in range(self.current_node_num_classes):
-                self.current_split_num_samples_in_classes['left'][self.current_node_unique_classes[i]] = 0.0
-                self.current_split_num_samples_in_classes['right'][self.current_node_unique_classes[i]] = self.current_node_num_of_samples_in_classes[self.current_node_unique_classes[i]]
+            self.current_split_num_samples_in_classes = copy.deepcopy(current_node_num_samples_in_classes)
+            # self.current_split_num_samples_in_classes = {}
+            # self.current_split_num_samples_in_classes['left'] = {}
+            # self.current_split_num_samples_in_classes['right']  = {}
+            # for i in range(self.current_node_num_classes):
+            #     self.current_split_num_samples_in_classes['left'][self.current_node_unique_classes[i]] = 0.0
+            #     self.current_split_num_samples_in_classes['right'][self.current_node_unique_classes[i]] = self.current_node_num_of_samples_in_classes[self.current_node_unique_classes[i]]
             # Tmp variable to store the value of the previous value
             value_stored = None
 
@@ -290,7 +306,7 @@ class CustomDecisionTreeClassifier(BaseEstimator, ClassifierMixin):
             return node
         # Recursively traverse the tree
         # Check the used feature is continuous or categorical
-        if x[node.feature] < node.value:
+        if x[node.feature] <= node.value:
             return self._predict_tree(x, node.left)
         else:
             return self._predict_tree(x, node.right)
@@ -335,13 +351,14 @@ class CustomDecisionTreeClassifier(BaseEstimator, ClassifierMixin):
             return
         # Recursively draw the tree
         # If value is continuous, print the feature and value
-        print("  " * depth, f"Feature {node.feature_name} < {node.value}")
+        print("  " * depth, f"Feature {node.feature_name} <= {node.value}")
         # Print gini for the node
         # print("  " * depth, f"Gini: {node.gini}")
         self._draw_tree(node.left, depth + 1)
-        print("  " * depth, f"Feature {node.feature_name} >= {node.value}")
+        print("  " * depth, f"Feature {node.feature_name} > {node.value}")
         # Print gini for the node
         # print("  " * depth, f"Gini: {node.gini}")
+        self._draw_tree(node.right, depth + 1)
 
     def score(self, X, y):
         predictions = self.predict(X)
