@@ -5,7 +5,7 @@ from typing import Any
 import copy
 
 class CustomDecisionTreeClassifier(BaseEstimator, ClassifierMixin):
-    def __init__(self, max_depth=1, min_samples_split=2, min_samples_leaf=1):
+    def __init__(self, max_depth=1, min_samples_split=2, min_samples_leaf=1, max_features=None):
         ''''
         Constructor for the DecisionTreeClassifier class.
 
@@ -28,6 +28,10 @@ class CustomDecisionTreeClassifier(BaseEstimator, ClassifierMixin):
             raise ValueError("min_samples_leaf must be an integer.")
         else:
             self.min_samples_leaf = min_samples_leaf
+        if max_features is not None and not isinstance(max_features, int) and not isinstance(max_features, str):
+            raise ValueError("max_features must be an integer or string.")
+        else:
+            self.max_features = max_features
     
     def __call__(self, *args, **kwargs):
         '''
@@ -49,8 +53,16 @@ class CustomDecisionTreeClassifier(BaseEstimator, ClassifierMixin):
         # self.num_samples = len(y)
         self.unique_classes = np.unique(y)
         X = self._check_feature_format(X)
-
         y = np.array(y)
+        if self.max_features is None:
+            self.max_features = X.shape[1]
+        elif isinstance(self.max_features, str):
+            if self.max_features == "sqrt":
+                self.max_features = int(np.sqrt(X.shape[1]))
+            elif self.max_features == "log2":
+                self.max_features = int(np.log2(X.shape[1]))
+            else:
+                raise ValueError("max_features must be an integer, 'sqrt' or 'log2'.")
         self.tree = self._build_tree(X, y, depth=0)
 
     def _build_tree(self, X, y, depth):
@@ -76,7 +88,7 @@ class CustomDecisionTreeClassifier(BaseEstimator, ClassifierMixin):
         # Find the best split
         best_feature, best_value, best_gini = self._find_best_split(X, y)
         # Check if the best split is None
-        if best_feature is None:
+        if best_feature is None or best_value is None:
             return self._most_common_class(y)
 
         best_feature_name = X[0, best_feature]
@@ -123,7 +135,7 @@ class CustomDecisionTreeClassifier(BaseEstimator, ClassifierMixin):
         # print("test stop condition")
         return depth == self.max_depth or len(y) < self.min_samples_split or len(np.unique(y)) == 1
     
-    def _empty_tree(self, y):
+    def _empty_tree(self, y) -> bool:
         '''
         Check if the tree is empty.
 
@@ -157,6 +169,7 @@ class CustomDecisionTreeClassifier(BaseEstimator, ClassifierMixin):
         y: array-like of shape (n_samples,)
             The target values.
         '''
+        number_of_features = X.shape[1]
         best_gini = 1
         best_feature = None
         best_value = None
@@ -164,14 +177,6 @@ class CustomDecisionTreeClassifier(BaseEstimator, ClassifierMixin):
         self.current_node_unique_classes = np.unique(y)
         self.current_node_num_classes = len(self.current_node_unique_classes)
         # Count the number of samples in each class in a dictionary with class as key and number of samples as value
-        # self.current_node_num_of_samples_in_classes = {}
-        # for i in range(self.current_node_num_classes):
-        #     self.current_node_num_of_samples_in_classes[self.current_node_unique_classes[i]] = np.sum(y == self.current_node_unique_classes[i])
-
-        # Keep only max_features number of features
-        if self.max_features < X.shape[1]:
-            random_indices = np.random.choice(X.shape[1], self.max_features, replace=False)
-            X = X[:, random_indices]
 
         current_node_num_samples_in_classes = {}
         current_node_num_samples_in_classes['left'] = {}
@@ -179,6 +184,11 @@ class CustomDecisionTreeClassifier(BaseEstimator, ClassifierMixin):
         for i in range(self.current_node_num_classes):
             current_node_num_samples_in_classes['left'][self.current_node_unique_classes[i]] = 0.0
             current_node_num_samples_in_classes['right'][self.current_node_unique_classes[i]] = np.sum(y == self.current_node_unique_classes[i])
+
+        # Keep only max_features number of features
+        if self.max_features < number_of_features:
+            random_indices = np.random.choice(X.shape[1], self.max_features, replace=False)
+            X = X[:, random_indices]
 
         # Iterate over all features and values to find the best split
         for feature in range(X.shape[1]):
@@ -193,12 +203,6 @@ class CustomDecisionTreeClassifier(BaseEstimator, ClassifierMixin):
             # Initialize the number of samples in each class in the left and right nodes
             self.current_split_num_samples_in_classes = {}
             self.current_split_num_samples_in_classes = copy.deepcopy(current_node_num_samples_in_classes)
-            # self.current_split_num_samples_in_classes = {}
-            # self.current_split_num_samples_in_classes['left'] = {}
-            # self.current_split_num_samples_in_classes['right']  = {}
-            # for i in range(self.current_node_num_classes):
-            #     self.current_split_num_samples_in_classes['left'][self.current_node_unique_classes[i]] = 0.0
-            #     self.current_split_num_samples_in_classes['right'][self.current_node_unique_classes[i]] = self.current_node_num_of_samples_in_classes[self.current_node_unique_classes[i]]
             # Tmp variable to store the value of the previous value
             value_stored = None
 
@@ -220,13 +224,16 @@ class CustomDecisionTreeClassifier(BaseEstimator, ClassifierMixin):
                     continue
                 # Calculate the Gini impurity
                 gini = self._calculate_gini(y_sorted[left_indices], y_sorted[right_indices], idx)
-                # print("test gini")
-                # print(gini)
                 # Update the best split if the current split is better
                 if gini < best_gini:
                     best_gini = gini
                     best_feature = feature
                     best_value = value
+            # translate the index of the feature to the original index
+
+        if self.max_features < number_of_features:
+            best_feature = random_indices[best_feature]
+
         return best_feature, best_value, best_gini
     
     def _calculate_gini(self, left_y, right_y, idx):
