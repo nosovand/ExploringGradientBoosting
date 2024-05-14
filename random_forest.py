@@ -15,26 +15,7 @@ class CustomRandomForestClassifier:
         self.scores = np.zeros(n_estimators)
         self.n_jobs = n_jobs
 
-
-
     def fit(self, X, y):
-        # for i in range(self.n_estimators):
-        #     # Randomly sample with replacement
-        #     bootstrap_idx = np.random.choice(len(X), len(X), replace=True)
-        #     oob_idx = [i for i in range(len(X)) if i not in bootstrap_idx]
-        #     X_bootstrap = X.iloc[bootstrap_idx]
-        #     y_bootstrap = y.iloc[bootstrap_idx]
-        #     X_oob = X.iloc[oob_idx]
-        #     y_oob = y.iloc[oob_idx]
-
-        #     # Create and train a decision tree classifier
-        #     tree = DecisionTreeClassifier(max_depth=self.max_depth, min_samples_leaf=self.min_samples_leaf, min_samples_split=self.min_samples_split, max_features=self.max_features, random_state=42)
-        #     tree.fit(X_bootstrap, y_bootstrap)
-        #     self.scores[i] = tree.score(X_oob, y_oob)
-
-        #     # Add the trained tree to the list of estimators
-        #     self.estimators.append(tree)
-
 
         def build_tree(X, y, i):
             # Randomly sample with replacement
@@ -52,27 +33,30 @@ class CustomRandomForestClassifier:
         
         results = Parallel(n_jobs=self.n_jobs)(delayed(build_tree)(X, y, i) for i in range(self.n_estimators))
         self.estimators, self.scores = zip(*results)
-
-
             
 
     def predict(self, X):
         # Make dictionary for each class and count the number of votes
         votes = {}
+        def predict_tree(tree, X):
+            return tree.predict(X)
+        
+        predictions = Parallel(n_jobs=self.n_jobs)(delayed(predict_tree)(tree, X) for tree in self.estimators)
+        votes = {}
         for i in range(len(X)):
             votes[i] = {}
-            for tree in self.estimators:
-                prediction = tree.predict(X.iloc[[i]])
-                if prediction[0] in votes[i]:
-                    votes[i][prediction[0]] += 1
+            for prediction in predictions:
+                if prediction[i] in votes[i]:
+                    votes[i][prediction[i]] += 1
                 else:
-                    votes[i][prediction[0]] = 1
+                    votes[i][prediction[i]] = 1
         
-        # print(votes)
         # Get the class with the most votes
-        predictions = []
+        final_predictions = []
         for i in range(len(X)):
-            predictions.append(max(votes[i], key=votes[i].get))
+            final_predictions.append(max(votes[i], key=votes[i].get))
+        
+        return final_predictions
         return predictions
     
     def score(self, X, y):
