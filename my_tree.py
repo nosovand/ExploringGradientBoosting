@@ -87,6 +87,7 @@ class CustomDecisionTreeClassifier(BaseEstimator, ClassifierMixin):
 
         # Find the best split
         best_feature, best_value, best_gini = self._find_best_split(X, y)
+        
         # Check if the best split is None
         if best_feature is None or best_value is None:
             return self._most_common_class(y)
@@ -233,14 +234,12 @@ class CustomDecisionTreeClassifier(BaseEstimator, ClassifierMixin):
             if gini_values[min_gini_idx] < best_gini:
                 best_gini = gini_values[min_gini_idx]
                 best_feature = feature
-                best_value = sorted_X[min_gini_idx, feature]
 
-        # print("best_gini")
-        # print(best_gini)
-        # print("best_feature")
-        # print(best_feature)
-        # print("best_value")
-        # print(best_value)
+                if min_gini_idx == len(sorted_X)-1:
+                    best_value = sorted_X[min_gini_idx, feature]
+                else:
+                    best_value = (sorted_X[min_gini_idx, feature].astype(float) + sorted_X[min_gini_idx + 1, feature].astype(float)) / 2.0
+                    best_value = str(best_value)
 
         # Translate the index of the feature to the original index if max_features < number_of_features
         if self.max_features < number_of_features:
