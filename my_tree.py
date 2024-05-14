@@ -207,23 +207,19 @@ class CustomDecisionTreeClassifier(BaseEstimator, ClassifierMixin):
                 left_class_counts[c] = np.cumsum(sorted_y == label, axis=0)
                 right_class_counts[c] = current_node_num_samples_in_classes['right'][label] - left_class_counts[c]
 
-            # print("left_class_counts")
-            # print(left_class_counts)
-            # print("right_class_counts")
-            # print(right_class_counts)
-            # print("left_sizes")
-            # print(left_sizes)
-            # print("right_sizes")
-            # print(right_sizes)
+            # Change first min_samples_leaf and last min_samples_leaf values of left and right sizes to 1
+            left_sizes[:self.min_samples_leaf] = 1
+            right_sizes[:self.min_samples_leaf] = 1
+            left_sizes[-self.min_samples_leaf:] = 1
+            right_sizes[-self.min_samples_leaf:] = 1
 
             # Calculate Gini impurity for all possible splits
             left_ginis = 1 - np.sum((left_class_counts / left_sizes) ** 2, axis=0)
             right_ginis = 1 - np.sum((right_class_counts / right_sizes) ** 2, axis=0)
+
             gini_values = (left_sizes / self.current_node_num_samples) * left_ginis + (right_sizes / self.current_node_num_samples) * right_ginis
 
-        
-
-            # Change min_sample_leaf values at the beginning and end of gini_values to 1
+            # Change the gini values of the first min_samples_leaf and last min_samples_leaf values to 1
             gini_values[:self.min_samples_leaf] = 1
             gini_values[-self.min_samples_leaf:] = 1
 
