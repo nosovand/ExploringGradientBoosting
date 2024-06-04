@@ -87,6 +87,7 @@ class CustomDecisionTreeClassifier(BaseEstimator, ClassifierMixin):
 
         # Find the best split
         best_feature, best_value, best_gini = self._find_best_split(X, y)
+        
         # Check if the best split is None
         if best_feature is None or best_value is None:
             return self._most_common_class(y)
@@ -157,10 +158,10 @@ class CustomDecisionTreeClassifier(BaseEstimator, ClassifierMixin):
         max_count_index = np.argmax(counts)
         most_common_element = unique_elements[max_count_index]
         return most_common_element
-    
-    def _find_best_split(self, X, y):  
+
+    def _find_best_split(self, X, y):
         '''
-        Find the best split for the data by iterating over all features and values 
+        Find the best split for the data by iterating over all features and values
         to find the one that minimizes the Gini impurity.
 
         Parameters:
@@ -176,96 +177,76 @@ class CustomDecisionTreeClassifier(BaseEstimator, ClassifierMixin):
         self.current_node_num_samples = len(y)
         self.current_node_unique_classes = np.unique(y)
         self.current_node_num_classes = len(self.current_node_unique_classes)
-        # Count the number of samples in each class in a dictionary with class as key and number of samples as value
 
+        # Count the number of samples in each class in a dictionary with class as key and number of samples as value
         current_node_num_samples_in_classes = {}
-        current_node_num_samples_in_classes['left'] = {}
-        current_node_num_samples_in_classes['right']  = {}
-        for i in range(self.current_node_num_classes):
-            current_node_num_samples_in_classes['left'][self.current_node_unique_classes[i]] = 0.0
-            current_node_num_samples_in_classes['right'][self.current_node_unique_classes[i]] = np.sum(y == self.current_node_unique_classes[i])
+        current_node_num_samples_in_classes['left'] = {label: 0 for label in self.current_node_unique_classes}
+        current_node_num_samples_in_classes['right'] = {label: 0 for label in self.current_node_unique_classes}
+        for label in y:
+            current_node_num_samples_in_classes['right'][label] += 1
 
         # Keep only max_features number of features
         if self.max_features < number_of_features:
             random_indices = np.random.choice(X.shape[1], self.max_features, replace=False)
             X = X[:, random_indices]
 
-        # Iterate over all features and values to find the best split
+        # Sort the data along each feature
+        sorted_indices = np.argsort(X[1:, :], axis=0)
+        sorted_X = np.take_along_axis(X[1:, :], sorted_indices, axis=0)
+        # sorted_y = np.take_along_axis(y, sorted_indices[:, 0], axis=0)
+
         for feature in range(X.shape[1]):
-            # Initialize left indices as an array of False values 
-            left_indices = np.zeros(len(X[1:, feature]), dtype=bool)
-            # Initialize right indices as an array of True values
-            right_indices = np.ones(len(X[1:, feature]), dtype=bool)
-            # Sort the data from smallest to largest
-            X_sorted_idx = X[1:, feature].argsort()
-            X_sorted = X[1:, feature][X_sorted_idx]
-            y_sorted = y[X_sorted_idx]
-            # Initialize the number of samples in each class in the left and right nodes
-            self.current_split_num_samples_in_classes = {}
-            self.current_split_num_samples_in_classes = copy.deepcopy(current_node_num_samples_in_classes)
-            # Tmp variable to store the value of the previous value
-            value_stored = None
+            sorted_y = np.take_along_axis(y, sorted_indices[:, feature], axis=0)
+            left_sizes = np.arange(1, X.shape[0])
+            right_sizes = self.current_node_num_samples - left_sizes
 
-            for idx, value in enumerate(X_sorted):
-                # Split the data
-                left_indices[idx] = True
-                right_indices[idx] = False
-                # Update the number of samples in each class
-                self.current_split_num_samples_in_classes['left'][y_sorted[idx]] += 1
-                self.current_split_num_samples_in_classes['right'][y_sorted[idx]] -= 1
-                # Check if the value is the same as the previous value
-                if value_stored == value:
-                    continue
-                value_stored = value
-                # Check if number of samples in each split is bigger than min_samples_leaf
-                if idx+1 < self.min_samples_leaf or self.current_node_num_samples-idx-1 < self.min_samples_leaf:
-                    # Skip splits with less than min_samples_leaf samples
-                    # print("Skipping split with less than min_samples_leaf samples")
-                    continue
-                # Calculate the Gini impurity
-                gini = self._calculate_gini(y_sorted[left_indices], y_sorted[right_indices], idx)
-                # Update the best split if the current split is better
-                if gini < best_gini:
-                    best_gini = gini
-                    best_feature = feature
-                    best_value = value
-            # translate the index of the feature to the original index
+            left_class_counts = np.zeros((self.current_node_num_classes, X.shape[0]-1))
+            right_class_counts = np.zeros((self.current_node_num_classes, X.shape[0]-1))
 
+            # Construct left and right class counts for all possible splits
+            for c, label in enumerate(self.current_node_unique_classes):
+                left_class_counts[c] = np.cumsum(sorted_y == label, axis=0)
+                right_class_counts[c] = current_node_num_samples_in_classes['right'][label] - left_class_counts[c]
+
+            # Change first min_samples_leaf and last min_samples_leaf values of left and right sizes to 1
+            left_sizes[:self.min_samples_leaf] = 1
+            right_sizes[:self.min_samples_leaf] = 1
+            left_sizes[-self.min_samples_leaf:] = 1
+            right_sizes[-self.min_samples_leaf:] = 1
+
+            # Calculate Gini impurity for all possible splits
+            left_ginis = 1 - np.sum((left_class_counts / left_sizes) ** 2, axis=0)
+            right_ginis = 1 - np.sum((right_class_counts / right_sizes) ** 2, axis=0)
+
+            gini_values = (left_sizes / self.current_node_num_samples) * left_ginis + (right_sizes / self.current_node_num_samples) * right_ginis
+
+            # Change the gini values of the first min_samples_leaf and last min_samples_leaf values to 1
+            gini_values[:self.min_samples_leaf] = 1
+            gini_values[-self.min_samples_leaf:] = 1
+
+            # print("gini_values")
+            # print(gini_values)
+
+            # Update best split if the current split is better
+            min_gini_idx = np.argmin(gini_values)
+            # print("min_gini_idx")
+            # print(min_gini_idx)
+            if gini_values[min_gini_idx] < best_gini:
+                best_gini = gini_values[min_gini_idx]
+                best_feature = feature
+
+                if min_gini_idx == len(sorted_X)-1:
+                    best_value = sorted_X[min_gini_idx, feature]
+                else:
+                    best_value = (sorted_X[min_gini_idx, feature].astype(float) + sorted_X[min_gini_idx + 1, feature].astype(float)) / 2.0
+                    best_value = str(best_value)
+
+        # Translate the index of the feature to the original index if max_features < number_of_features
         if self.max_features < number_of_features:
             best_feature = random_indices[best_feature]
 
         return best_feature, best_value, best_gini
-    
-    def _calculate_gini(self, left_y, right_y, idx):
-        '''
-        Calculate the Gini impurity for the given split.
 
-        Parameters:
-        left_y: array-like
-            The target values for the left node.
-        right_y: array-like
-            The target values for the right node.
-        '''
-        left_size = idx + 1
-        right_size = self.current_node_num_samples - idx - 1
-        #If left or right node is empty, return 1
-        if left_size == 0 or right_size == 0:
-            return 1
-        #2D array of size len(classes) x 2 to store ratio of class i in left and right nodes
-        ratios = np.zeros((self.current_node_num_classes, 2))
-        for i, label in enumerate(self.current_node_unique_classes):
-            #calculate ratio of class i in left node
-            ratios[i, 0] = self.current_split_num_samples_in_classes['left'][label] / left_size
-            #calculate ratio of class i in right node
-            ratios[i, 1] = self.current_split_num_samples_in_classes['right'][label] / right_size
-
-        #Calculate gini impurity for left and right nodes
-        left_gini = 1 - np.sum(ratios[:, 0] ** 2)
-        right_gini = 1 - np.sum(ratios[:, 1] ** 2)
-
-        #Calculate weighted gini impurity
-        gini = (left_size / self.current_node_num_samples) * left_gini + (right_size / self.current_node_num_samples) * right_gini
-        return gini
     
     def predict(self, X):
         '''
