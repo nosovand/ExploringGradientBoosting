@@ -1,6 +1,6 @@
 import numpy as np
 import pandas as pd
-from sklearn.base import BaseEstimator, ClassifierMixin
+from sklearn.base import BaseEstimator, ClassifierMixin, RegressorMixin
 from typing import Any
 import copy
 
@@ -343,6 +343,159 @@ class CustomDecisionTreeClassifier(BaseEstimator, ClassifierMixin):
             setattr(self, parameter, value)
         return self
 
+class CustomDecisionTreeRegressor(BaseEstimator, RegressorMixin):
+    def __init__(self, max_depth=1, min_samples_split=2, min_samples_leaf=1, max_features=None):
+        if not isinstance(max_depth, int):
+            raise ValueError(f"max_depth must be an integer. {max_depth} is not an integer.")
+        else:
+            self.max_depth = max_depth
+        if not isinstance(min_samples_split, int):
+            raise ValueError("min_samples_split must be an integer.")
+        else:
+            self.min_samples_split = min_samples_split
+        if not isinstance(min_samples_leaf, int):
+            raise ValueError("min_samples_leaf must be an integer.")
+        else:
+            self.min_samples_leaf = min_samples_leaf
+        if max_features is not None and not isinstance(max_features, int) and not isinstance(max_features, str):
+            raise ValueError("max_features must be an integer or string.")
+        else:
+            self.max_features = max_features
+    
+    def __call__(self, *args, **kwargs):
+        return CustomDecisionTreeRegressor(*args, **kwargs)
+
+    def fit(self, X, y):
+        X = self._check_feature_format(X)
+        y = np.array(y)
+        if self.max_features is None:
+            self.max_features = X.shape[1]
+        elif isinstance(self.max_features, str):
+            if self.max_features == "sqrt":
+                self.max_features = int(np.sqrt(X.shape[1]))
+            elif self.max_features == "log2":
+                self.max_features = int(np.log2(X.shape[1]))
+            else:
+                raise ValueError("max_features must be an integer, 'sqrt' or 'log2'.")
+        self.tree = self._build_tree(X, y, depth=0)
+
+    def _build_tree(self, X, y, depth):
+        if self._empty_tree(y):
+            return None
+        if self._stop_condition(X, y, depth):
+            return np.mean(y)
+
+        best_feature, best_value, best_mse = self._find_best_split(X, y)
+        if best_feature is None or best_value is None:
+            return np.mean(y)
+
+        best_feature_name = X[0, best_feature]
+        # print(f"Best feature: {best_feature_name}, Best value: {best_value}, Best MSE: {best_mse}")
+        # print(f"Best deature sample: {X[1:, best_feature]}")
+        # print(f"Best deature sample as float: {X[1:, best_feature].astype(float)}")
+        left_indices = X[1:, best_feature].astype(float) <= best_value
+        right_indices = X[1:, best_feature].astype(float) > best_value
+        left_indices = np.insert(left_indices, 0, True)
+        right_indices = np.insert(right_indices, 0, True)
+
+        if len(y[left_indices[1:]]) < self.min_samples_leaf or len(y[right_indices[1:]]) < self.min_samples_leaf:
+            return np.mean(y)
+
+        left_node = self._build_tree(X[left_indices], y[left_indices[1:]], depth + 1)
+        right_node = self._build_tree(X[right_indices], y[right_indices[1:]], depth + 1)
+        
+        tree = Node(feature=best_feature, value=best_value, left=left_node, right=right_node)
+        return tree
+    
+    def _stop_condition(self, X, y, depth) -> bool:
+        return depth == self.max_depth or len(y) < self.min_samples_split
+    
+    def _empty_tree(self, y) -> bool:
+        return len(y) == 0
+    
+    def _find_best_split(self, X, y):
+        number_of_features = X.shape[1]
+        best_mse = float("inf")
+        best_feature = None
+        best_value = None
+        self.current_node_num_samples = len(y)
+
+        if self.max_features < number_of_features:
+            random_indices = np.random.choice(X.shape[1], self.max_features, replace=False)
+            X = X[:, random_indices]
+
+        sorted_indices = np.argsort(X[1:, :], axis=0)
+        sorted_X = np.take_along_axis(X[1:, :], sorted_indices, axis=0)
+
+        for feature in range(X.shape[1]):
+            sorted_y = np.take_along_axis(y, sorted_indices[:, feature], axis=0)
+            left_sizes = np.arange(1, X.shape[0])
+            right_sizes = self.current_node_num_samples - left_sizes
+
+            for i in range(1, len(sorted_y)-1):
+                left_mean = np.mean(sorted_y[:i])
+                right_mean = np.mean(sorted_y[i:])
+                left_mse = np.mean((sorted_y[:i] - left_mean) ** 2)
+                right_mse = np.mean((sorted_y[i:] - right_mean) ** 2)
+                mse = (left_sizes[i - 1] / self.current_node_num_samples) * left_mse + \
+                      (right_sizes[i - 1] / self.current_node_num_samples) * right_mse
+
+                if mse < best_mse:
+                    best_mse = mse
+                    best_feature = feature
+                    best_value = (sorted_X[i, feature].astype(float) + sorted_X[i+1, feature].astype(float)) / 2.0
+                    # print(f"Test best value {best_value}")
+
+        if self.max_features < number_of_features:
+            best_feature = random_indices[best_feature]
+
+        return best_feature, best_value, best_mse
+
+    def predict(self, X):
+        X = self._check_feature_format(X)[1:]
+        return np.array([self._predict_tree(x, self.tree) for x in X])
+    
+    def _predict_tree(self, x, node):
+        if not isinstance(node, Node):
+            return node
+        if x[node.feature].astype(float) <= node.value:
+            return self._predict_tree(x, node.left)
+        else:
+            return self._predict_tree(x, node.right)
+        
+    def _check_feature_format(self, data):
+        if not isinstance(data, pd.DataFrame):
+            raise ValueError("Input data must be a pandas DataFrame.")
+        column_names = data.columns.tolist()
+        return np.vstack([column_names, data.values])
+    
+    def draw_tree(self):
+        self._draw_tree(self.tree)
+
+    def _draw_tree(self, node, depth=0):
+        if not isinstance(node, Node):
+            print("  " * depth, node)
+            return
+        print("  " * depth, f"Feature {node.feature} <= {node.value}")
+        self._draw_tree(node.left, depth + 1)
+        print("  " * depth, f"Feature {node.feature} > {node.value}")
+        self._draw_tree(node.right, depth + 1)
+
+    def score(self, X, y):
+        predictions = self.predict(X)
+        u = np.sum((predictions - y) ** 2)
+        v = np.sum((y - np.mean(y)) ** 2)
+        return 1 - u/v
+
+    def get_params(self, deep=True):
+        return {"max_depth": self.max_depth, "min_samples_split": self.min_samples_split}
+
+    def set_params(self, **parameters):
+        for parameter, value in parameters.items():
+            setattr(self, parameter, value)
+        return self
+
+
 
 class Node:
     '''
@@ -355,3 +508,5 @@ class Node:
         self.left = left
         self.right = right
         self.gini = gini
+
+
