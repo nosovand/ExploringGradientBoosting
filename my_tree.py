@@ -391,8 +391,8 @@ class CustomDecisionTreeRegressor(BaseEstimator, RegressorMixin):
 
         best_feature_name = X[0, best_feature]
         # print(f"Best feature: {best_feature_name}, Best value: {best_value}, Best MSE: {best_mse}")
-        # print(f"Best deature sample: {X[1:, best_feature]}")
-        # print(f"Best deature sample as float: {X[1:, best_feature].astype(float)}")
+        # print(f"Best feature sample: {X[1:, best_feature]}")
+        # print(f"Best feature sample as float: {X[1:, best_feature].astype(float)}")
         left_indices = X[1:, best_feature].astype(float) <= best_value
         right_indices = X[1:, best_feature].astype(float) > best_value
         left_indices = np.insert(left_indices, 0, True)
@@ -428,23 +428,53 @@ class CustomDecisionTreeRegressor(BaseEstimator, RegressorMixin):
         sorted_X = np.take_along_axis(X[1:, :], sorted_indices, axis=0)
 
         for feature in range(X.shape[1]):
+            # print("Feature", feature)
             sorted_y = np.take_along_axis(y, sorted_indices[:, feature], axis=0)
-            left_sizes = np.arange(1, X.shape[0])
+            sorted_x_uniq, counts_x = np.unique(sorted_X[:, feature], return_counts=True)
+            if len(sorted_x_uniq) == 1:
+                continue
+            
+            sorted_y_sum_uniq_x = np.zeros_like(counts_x, dtype=float)
+            start_index = 0
+            for idx, count in enumerate(counts_x):
+                end_index = start_index + count
+                sorted_y_sum_uniq_x[idx] = np.sum(sorted_y[start_index:end_index])
+                if idx > 0:
+                    sorted_y_sum_uniq_x[idx] += sorted_y_sum_uniq_x[idx - 1]
+                start_index = end_index
+            
+            rev_sorted_y_sum_uniq_x = sorted_y_sum_uniq_x[-1] - sorted_y_sum_uniq_x
+            
+            left_sizes = np.cumsum(counts_x)
             right_sizes = self.current_node_num_samples - left_sizes
+            
+            left_means = sorted_y_sum_uniq_x[:-1] / left_sizes[:-1]
+            right_means = rev_sorted_y_sum_uniq_x[:-1] / right_sizes[:-1]
+            
+            left_mse_array = np.zeros(len(left_means))
+            right_mse_array = np.zeros(len(right_means))
+            
+            for i in range(len(left_means)):
+                left_mse_array[i] = np.mean((sorted_y[:left_sizes[i]] - left_means[i]) ** 2)
+                right_mse_array[i] = np.mean((sorted_y[left_sizes[i]:] - right_means[i]) ** 2)
 
-            for i in range(1, len(sorted_y)-1):
-                left_mean = np.mean(sorted_y[:i])
-                right_mean = np.mean(sorted_y[i:])
-                left_mse = np.mean((sorted_y[:i] - left_mean) ** 2)
-                right_mse = np.mean((sorted_y[i:] - right_mean) ** 2)
-                mse = (left_sizes[i - 1] / self.current_node_num_samples) * left_mse + \
-                      (right_sizes[i - 1] / self.current_node_num_samples) * right_mse
+            # left_mse_array = np.array([np.mean((sorted_y[:size] - mean) ** 2) for size, mean in zip(left_sizes[:-1], left_means)])
+            # right_mse_array = np.array([np.mean((sorted_y[size:] - mean) ** 2) for size, mean in zip(left_sizes[:-1], right_means)])
 
-                if mse < best_mse:
-                    best_mse = mse
-                    best_feature = feature
-                    best_value = (sorted_X[i, feature].astype(float) + sorted_X[i+1, feature].astype(float)) / 2.0
-                    # print(f"Test best value {best_value}")
+            
+            mse_array = (left_sizes[:-1] / self.current_node_num_samples) * left_mse_array + \
+                        (right_sizes[:-1] / self.current_node_num_samples) * right_mse_array
+            
+            min_mse_idx = np.argmin(mse_array)
+            if mse_array[min_mse_idx] < best_mse:
+                best_mse = mse_array[min_mse_idx]
+                best_feature = feature
+                best_value_idx = np.cumsum(counts_x)[min_mse_idx] - 1
+                
+                if best_value_idx == len(sorted_X) - 1:
+                    best_value = sorted_X[best_value_idx, feature]
+                else:
+                    best_value = (sorted_X[best_value_idx + 1, feature].astype(float))
 
         if self.max_features < number_of_features:
             best_feature = random_indices[best_feature]
