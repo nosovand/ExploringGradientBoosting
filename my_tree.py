@@ -14,9 +14,12 @@ class CustomDecisionTreeClassifier(BaseEstimator, ClassifierMixin):
             The maximum depth of the tree. If None, then nodes are expanded until all leaves are pure or until all leaves contain less than min_samples_split samples.
         min_samples_split: int, default=2
             The minimum number of samples required to split an internal node.
+        min_samples_leaf: int, default=1
+            The minimum number of samples required to be at a leaf node.
+        max_features: int or string, default=None
+            The number of features to consider when looking for the best split. If None, then all features will be considered. If 'sqrt', then max_features=sqrt(n_features). If 'log2', then max_features=log2(n_features).
         '''
         if not isinstance(max_depth, int):
-            
             raise ValueError(f"max_depth must be an integer. {max_depth} is not an integer.")
         else:
             self.max_depth = max_depth
@@ -44,13 +47,11 @@ class CustomDecisionTreeClassifier(BaseEstimator, ClassifierMixin):
         Build a decision tree classifier from the training set (X, y).
 
         Parameters:
-        X: matrix of shape (n_samples, n_features)
+        X: matrix of shape (n_samples + feature_name, n_features)
             The training input samples.
-        y: array-like of shape (n_samples,)
+        y: array-like of shape (n_samples)
             The target values.
         '''
-        # self.num_classes = len(np.unique(y))
-        # self.num_samples = len(y)
         self.unique_classes = np.unique(y)
         X = self._check_feature_format(X)
         y = np.array(y)
@@ -62,7 +63,7 @@ class CustomDecisionTreeClassifier(BaseEstimator, ClassifierMixin):
             elif self.max_features == "log2":
                 self.max_features = int(np.log2(X.shape[1]))
             else:
-                raise ValueError("max_features must be an integer, 'sqrt' or 'log2'.")
+                raise ValueError("max_features must be an int, 'sqrt' or 'log2'.")
         self.tree = self._build_tree(X, y, depth=0)
 
     def _build_tree(self, X, y, depth):
@@ -76,13 +77,17 @@ class CustomDecisionTreeClassifier(BaseEstimator, ClassifierMixin):
             The target values.
         depth: int
             The current depth of the tree.
+
+        Returns:
+        Node: The root node of the tree.
         '''
         # If the tree is empty, return None
+        # Used only for debugging purposes
         if self._empty_tree(y):
             return None
 
         # If the stopping condition is met, return the most common class
-        if self._stop_condition(X, y, depth):
+        if self._stop_condition(y, depth):
             return self._most_common_class(y)
 
         # Find the best split
@@ -90,20 +95,16 @@ class CustomDecisionTreeClassifier(BaseEstimator, ClassifierMixin):
         
         # Check if the best split is None
         if best_feature is None or best_value is None:
+            # Best split was not found, return the most common class
             return self._most_common_class(y)
 
-        best_feature_name = X[0, best_feature]
-
         # Split the data based on the best split
-        left_indices = X[1:, best_feature] <= best_value
-        right_indices = X[1:, best_feature] > best_value
+        left_indices = X[1:, best_feature].astype(float) <= best_value
+        right_indices = X[1:, best_feature].astype(float) > best_value
 
         #Add row 0 to left and right indices to keep track of the feature names
         left_indices = np.insert(left_indices, 0, True)
         right_indices = np.insert(right_indices, 0, True)
-
-        # Delete used features
-        # X = np.delete(X, best_feature, axis=1)
 
         # Check if number of samples in each split is bigger than min_samples_leaf
         if len(y[left_indices[1:]]) < self.min_samples_leaf or len(y[right_indices[1:]]) < self.min_samples_leaf:
@@ -113,11 +114,13 @@ class CustomDecisionTreeClassifier(BaseEstimator, ClassifierMixin):
         left_node = self._build_tree(X[left_indices], y[left_indices[1:]], depth+1)
         right_node = self._build_tree(X[right_indices], y[right_indices[1:]], depth+1)
         
+        # Create a node
+        best_feature_name = X[0, best_feature]
         tree = Node(feature=best_feature, feature_name=best_feature_name, value=best_value, left=left_node, right=right_node, gini=best_gini)
 
         return tree
     
-    def _stop_condition(self, X, y, depth) -> bool:
+    def _stop_condition(self, y, depth) -> bool:
         ''''
         Check if the stopping condition is met.
         Stopping conditions:
@@ -126,14 +129,14 @@ class CustomDecisionTreeClassifier(BaseEstimator, ClassifierMixin):
         - The node is pure, i.e., all samples belong to the same class.
 
         Parameters:
-        X: matrix of shape (n_samples, n_features)
-            The training input samples.
-        y: array-like of shape (n_samples,)
+        y: array-like of shape (n_samples)
             The target values.
         depth: int
             The current depth of the tree.
+
+        Returns:
+        bool: True if the stopping condition is met, False otherwise.
         '''
-        # print("test stop condition")
         return depth == self.max_depth or len(y) < self.min_samples_split or len(np.unique(y)) == 1
     
     def _empty_tree(self, y) -> bool:
@@ -143,6 +146,9 @@ class CustomDecisionTreeClassifier(BaseEstimator, ClassifierMixin):
         Parameters:
         y: array-like of shape (n_samples,)
             The target values.
+
+        Returns:
+        bool: True if the tree is empty, False otherwise.
         '''
         return len(y) == 0
     
@@ -153,6 +159,9 @@ class CustomDecisionTreeClassifier(BaseEstimator, ClassifierMixin):
         Parameters:
         y: array-like of shape (n_samples,)
             The target values.
+
+        Returns:
+        Any: The most common class.
         '''
         unique_elements, counts = np.unique(y, return_counts=True)
         max_count_index = np.argmax(counts)
@@ -165,10 +174,15 @@ class CustomDecisionTreeClassifier(BaseEstimator, ClassifierMixin):
         to find the one that minimizes the Gini impurity.
 
         Parameters:
-        X: matrix of shape (n_samples, n_features)
+        X: matrix of shape (n_samples + feature_name, n_features)
             The training input samples.
         y: array-like of shape (n_samples,)
             The target values.
+
+        Returns:
+        int: The index of the best feature.
+        float: The best value to split the data.
+        float: The best Gini impurity.
         '''
         number_of_features = X.shape[1]
         best_gini = 1
@@ -180,7 +194,7 @@ class CustomDecisionTreeClassifier(BaseEstimator, ClassifierMixin):
 
         # Count the number of samples in each class in a dictionary with class as key and number of samples as value
         current_node_num_samples_in_classes = {}
-        current_node_num_samples_in_classes['left'] = {label: 0 for label in self.current_node_unique_classes}
+        # current_node_num_samples_in_classes['left'] = {label: 0 for label in self.current_node_unique_classes}
         current_node_num_samples_in_classes['right'] = {label: 0 for label in self.current_node_unique_classes}
         for label in y:
             current_node_num_samples_in_classes['right'][label] += 1
@@ -191,55 +205,68 @@ class CustomDecisionTreeClassifier(BaseEstimator, ClassifierMixin):
             X = X[:, random_indices]
 
         # Sort the data along each feature
-        sorted_indices = np.argsort(X[1:, :], axis=0)
+        sorted_indices = np.argsort(X[1:, :].astype(float), axis=0)
         sorted_X = np.take_along_axis(X[1:, :], sorted_indices, axis=0)
-        # sorted_y = np.take_along_axis(y, sorted_indices[:, 0], axis=0)
 
         for feature in range(X.shape[1]):
+            # Sort the target values based on the sorted feature
             sorted_y = np.take_along_axis(y, sorted_indices[:, feature], axis=0)
-            left_sizes = np.arange(1, X.shape[0])
+            # Find the unique values and their counts
+            sorted_x_uniq, counts_x = np.unique(sorted_X[:, feature].astype(float), return_counts=True)
+            if len(sorted_x_uniq) == 1:
+                continue
+
+            # Calculate the sizes of the left and right splits
+            left_sizes = np.cumsum(counts_x)
             right_sizes = self.current_node_num_samples - left_sizes
 
-            left_class_counts = np.zeros((self.current_node_num_classes, X.shape[0]-1))
-            right_class_counts = np.zeros((self.current_node_num_classes, X.shape[0]-1))
+            left_class_counts = np.zeros((self.current_node_num_classes, X.shape[0] - 1))
+            right_class_counts = np.zeros((self.current_node_num_classes, X.shape[0] - 1))
 
             # Construct left and right class counts for all possible splits
             for c, label in enumerate(self.current_node_unique_classes):
                 left_class_counts[c] = np.cumsum(sorted_y == label, axis=0)
                 right_class_counts[c] = current_node_num_samples_in_classes['right'][label] - left_class_counts[c]
 
-            # Change first min_samples_leaf and last min_samples_leaf values of left and right sizes to 1
-            left_sizes[:self.min_samples_leaf] = 1
-            right_sizes[:self.min_samples_leaf] = 1
-            left_sizes[-self.min_samples_leaf:] = 1
-            right_sizes[-self.min_samples_leaf:] = 1
+            left_class_counts_uniq = np.zeros((self.current_node_num_classes, len(sorted_x_uniq)))
+            right_class_counts_uniq = np.zeros((self.current_node_num_classes, len(sorted_x_uniq)))
+
+            end_indices = np.cumsum(counts_x)
+            start_indices = np.roll(end_indices, shift=1)
+            start_indices[0] = 0
+            
+            left_class_counts_uniq = left_class_counts[:, end_indices - 1]
+            right_class_counts_uniq = right_class_counts[:, end_indices - 1]
 
             # Calculate Gini impurity for all possible splits
-            left_ginis = 1 - np.sum((left_class_counts / left_sizes) ** 2, axis=0)
-            right_ginis = 1 - np.sum((right_class_counts / right_sizes) ** 2, axis=0)
+            left_ginis = 1 - np.sum((left_class_counts_uniq[:, :-1] / left_sizes[:-1]) ** 2, axis=0)
+            right_ginis = 1 - np.sum((right_class_counts_uniq[:, :-1] / right_sizes[:-1]) ** 2, axis=0)
 
-            gini_values = (left_sizes / self.current_node_num_samples) * left_ginis + (right_sizes / self.current_node_num_samples) * right_ginis
-
-            # Change the gini values of the first min_samples_leaf and last min_samples_leaf values to 1
-            gini_values[:self.min_samples_leaf] = 1
-            gini_values[-self.min_samples_leaf:] = 1
-
-            # print("gini_values")
-            # print(gini_values)
+            gini_values = (left_sizes[:-1] / self.current_node_num_samples) * left_ginis + (right_sizes[:-1] / self.current_node_num_samples) * right_ginis
 
             # Update best split if the current split is better
-            min_gini_idx = np.argmin(gini_values)
-            # print("min_gini_idx")
-            # print(min_gini_idx)
+            # Choose the best split while checking for the min_samples_leaf condition using the gini_values
+            splits_considered = 0
+            while splits_considered < len(gini_values):
+                min_gini_idx = np.argmin(gini_values)
+                if left_sizes[min_gini_idx] < self.min_samples_leaf or right_sizes[min_gini_idx] < self.min_samples_leaf:
+                    gini_values[min_gini_idx] = 2.0
+                    splits_considered += 1
+                else:
+                    break
+
             if gini_values[min_gini_idx] < best_gini:
+
                 best_gini = gini_values[min_gini_idx]
                 best_feature = feature
+                # Since the gini_values are calculated for the unique values of the feature,\
+                #  we need to find the index of the best value in the original sorted_X
+                best_value_idx = np.cumsum(counts_x)[min_gini_idx] - 1
 
                 if min_gini_idx == len(sorted_X)-1:
-                    best_value = sorted_X[min_gini_idx, feature]
+                    best_value = sorted_X[best_value_idx, feature]
                 else:
-                    best_value = (sorted_X[min_gini_idx, feature].astype(float) + sorted_X[min_gini_idx + 1, feature].astype(float)) / 2.0
-                    best_value = str(best_value)
+                    best_value = (sorted_X[best_value_idx, feature].astype(float) + sorted_X[best_value_idx + 1, feature].astype(float)) / 2.0
 
         # Translate the index of the feature to the original index if max_features < number_of_features
         if self.max_features < number_of_features:
@@ -255,6 +282,10 @@ class CustomDecisionTreeClassifier(BaseEstimator, ClassifierMixin):
         Parameters:
         X: matrix of shape (n_samples, n_features)
             The input samples.
+
+        Returns:
+        array-like of shape (n_samples)
+            The predicted classes.
         '''
         X = self._check_feature_format(X)[1:]
         return np.array([self._predict_tree(x, self.tree) for x in X])
@@ -269,14 +300,16 @@ class CustomDecisionTreeClassifier(BaseEstimator, ClassifierMixin):
             The input sample.
         node: Node
             The current node in the tree.
+        
+        Returns:
+        Any: The predicted class.
         '''
         
         # If the node is a leaf, return the predicted class
         if not isinstance(node, Node):
             return node
         # Recursively traverse the tree
-        # Check the used feature is continuous or categorical
-        if x[node.feature] <= node.value:
+        if x[node.feature].astype(float) <= node.value:
             return self._predict_tree(x, node.left)
         else:
             return self._predict_tree(x, node.right)
@@ -320,25 +353,49 @@ class CustomDecisionTreeClassifier(BaseEstimator, ClassifierMixin):
             print("  " * depth, node)
             return
         # Recursively draw the tree
-        # If value is continuous, print the feature and value
+        # Print the feature and value of the current node
         print("  " * depth, f"Feature {node.feature_name} <= {node.value}")
-        # Print gini for the node
-        # print("  " * depth, f"Gini: {node.gini}")
         self._draw_tree(node.left, depth + 1)
         print("  " * depth, f"Feature {node.feature_name} > {node.value}")
-        # Print gini for the node
-        # print("  " * depth, f"Gini: {node.gini}")
         self._draw_tree(node.right, depth + 1)
 
     def score(self, X, y):
+        '''
+        Return the mean accuracy on the given test data and labels.
+
+        Parameters:
+        X: matrix of shape (n_samples + feature_name, n_features)
+            The input samples.
+        y: array-like of shape (n_samples)
+            The target values.
+        
+        Returns:
+        float: The mean accuracy of the classifier.
+        '''
         predictions = self.predict(X)
         score = np.mean(predictions == y)
         return score
 
     def get_params(self, deep=True):
-        return {"max_depth": self.max_depth, "min_samples_split": self.min_samples_split}
+        '''
+        Get parameters for this estimator.
+        
+        Returns:
+        dict: Parameter names mapped to their values.
+        '''
+        return {"max_depth": self.max_depth, "min_samples_split": self.min_samples_split, "min_samples_leaf": self.min_samples_leaf, "max_features": self.max_features}
 
     def set_params(self, **parameters):
+        '''
+        Set the parameters of this estimator.
+
+        Parameters:
+        **parameters: dict
+            Estimator parameters.
+
+        Returns:
+        CustomDecisionTreeClassifier: The estimator instance with the parameters updated.
+        '''
         for parameter, value in parameters.items():
             setattr(self, parameter, value)
         return self
