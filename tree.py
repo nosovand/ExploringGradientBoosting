@@ -2,10 +2,10 @@ import numpy as np
 import pandas as pd
 from sklearn.base import BaseEstimator, ClassifierMixin, RegressorMixin
 from typing import Any
-import copy
+from sklearn.metrics import r2_score
 
 class CustomDecisionTreeClassifier(BaseEstimator, ClassifierMixin):
-    def __init__(self, max_depth=1, min_samples_split=2, min_samples_leaf=1, max_features=None):
+    def __init__(self, max_depth=100, min_samples_split=2, min_samples_leaf=1, max_features=None):
         ''''
         Constructor for the DecisionTreeClassifier class.
 
@@ -401,7 +401,7 @@ class CustomDecisionTreeClassifier(BaseEstimator, ClassifierMixin):
         return self
 
 class CustomDecisionTreeRegressor(BaseEstimator, RegressorMixin):
-    def __init__(self, max_depth=1, min_samples_split=2, min_samples_leaf=1, max_features=None):
+    def __init__(self, max_depth=100, min_samples_split=2, min_samples_leaf=1, max_features=None):
         '''
         Constructor for the DecisionTreeRegressor class.
 
@@ -714,9 +714,9 @@ class CustomDecisionTreeRegressor(BaseEstimator, RegressorMixin):
             return
         
         # Recursively draw the tree
-        print("  " * depth, f"Feature {node.feature} < {node.value}")
+        print("  " * depth, f"Feature {node.feature} <= {node.value}")
         self._draw_tree(node.left, depth + 1)
-        print("  " * depth, f"Feature {node.feature} >= {node.value}")
+        print("  " * depth, f"Feature {node.feature} > {node.value}")
         self._draw_tree(node.right, depth + 1)
 
     def score(self, X, y):
@@ -734,9 +734,9 @@ class CustomDecisionTreeRegressor(BaseEstimator, RegressorMixin):
         '''
 
         predictions = self.predict(X)
-        u = np.sum((predictions - y) ** 2)
-        v = np.sum((y - np.mean(y)) ** 2)
-        return 1 - u/v
+        # u = np.sum((predictions - y) ** 2)
+        # v = np.sum((y - np.mean(y)) ** 2)
+        return r2_score(y, predictions)
 
     def get_params(self, deep=True):
         return {"max_depth": self.max_depth, "min_samples_split": self.min_samples_split, "min_samples_leaf": self.min_samples_leaf, "max_features": self.max_features}

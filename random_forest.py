@@ -1,8 +1,9 @@
 # Implement Random Forest Classifier
-from my_tree import CustomDecisionTreeClassifier, CustomDecisionTreeRegressor
+from tree import CustomDecisionTreeClassifier, CustomDecisionTreeRegressor
 from sklearn.tree import DecisionTreeClassifier, DecisionTreeRegressor
 import numpy as np
 from joblib import Parallel, delayed
+from sklearn.metrics import r2_score
 
 class CustomRandomForestClassifier:
     oob_score_ = 0.0
@@ -170,9 +171,10 @@ class CustomRandomForestRegressor:
         for idx, preds in oob_predictions.items():
             final_predictions[idx] = np.mean(preds)
 
-        # Calculate the OOB score using mean squared error
+        # Calculate the OOB score using R2 error
         oob_indices = list(oob_predictions.keys())
-        self.oob_score_ = np.mean((final_predictions[oob_indices] - y.iloc[oob_indices]) ** 2)
+        # self.oob_score_ = np.mean((final_predictions[oob_indices] - y.iloc[oob_indices]) ** 2)
+        self.oob_score_ = r2_score(y.iloc[oob_indices], final_predictions[oob_indices])
 
     def predict(self, X):
         def predict_tree(tree, X):
@@ -187,7 +189,7 @@ class CustomRandomForestRegressor:
 
     def score(self, X, y):
         predictions = self.predict(X)
-        return np.mean((predictions - y) ** 2)
+        return r2_score(y, predictions)
 
     def oob_score(self):
         return self.oob_score_
