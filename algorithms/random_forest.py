@@ -1,5 +1,5 @@
 # Implement Random Forest Classifier
-from tree import CustomDecisionTreeClassifier, CustomDecisionTreeRegressor
+from algorithms.tree import CustomDecisionTreeClassifier, CustomDecisionTreeRegressor
 from sklearn.tree import DecisionTreeClassifier, DecisionTreeRegressor
 import numpy as np
 from joblib import Parallel, delayed
