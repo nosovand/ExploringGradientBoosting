@@ -1,6 +1,6 @@
 # Implement Gradient Boosting Regressor
-from my_tree import CustomDecisionTreeRegressor
-from sklearn.tree import DecisionTreeRegressor, plot_tree
+from tree import CustomDecisionTreeRegressor
+from sklearn.tree import DecisionTreeRegressor
 import numpy as np
 from sklearn.metrics import r2_score
 
@@ -98,3 +98,4 @@ class CustomGradientBoostingRegressor:
     
     def print_params(self):
         print(f'n_estimators={self.n_estimators}, learning_rate={self.learning_rate}, max_depth={self.max_depth}, min_samples_split={self.min_samples_split}, min_samples_leaf={self.min_samples_leaf}, max_features={self.max_features}, tree_type={self.tree_type}')
+
